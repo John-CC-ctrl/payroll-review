@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cobalt Clean — Payroll Review</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    :root {
+      --blue: #1e6fcc;
+      --blue-light: #e8f1fb;
+      --blue-dark: #154f96;
+      --green: #1a8a4a;
+      --green-light: #e8f7ee;
+      --amber: #c07000;
+      --amber-light: #fff8e6;
+      --red: #c0392b;
+      --red-light: #fdecea;
+      --purple: #7c3aed;
+      --purple-light: #f3eeff;
+      --teal: #0891b2;
+      --teal-light: #e0f7fa;
+      --gray-50: #f8f9fa;
+      --gray-100: #f1f3f5;
+      --gray-200: #e9ecef;
+      --gray-400: #ced4da;
+      --gray-600: #6c757d;
+      --gray-800: #343a40;
+      --gray-900: #212529;
+      --radius: 8px;
+      --shadow: 0 1px 4px rgba(0,0,0,0.08), 0 2px 12px rgba(0,0,0,0.05);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.10);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--gray-50); color: var(--gray-900); font-size: 14px; line-height: 1.5; }
+
+    /* ── Header ── */
+    .app-header { background: linear-gradient(135deg, #0f3d6e 0%, #1e6fcc 100%); color: white; padding: 20px 32px; display: flex; align-items: center; gap: 16px; box-shadow: var(--shadow-md); }
+    .app-header .logo { width: 42px; height: 42px; background: rgba(255,255,255,0.2); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+    .app-header h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+    .app-header .subtitle { font-size: 13px; opacity: 0.75; margin-top: 1px; }
+
+    /* ── Upload ── */
+    .upload-section { padding: 28px 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 900px; }
+    .upload-card { background: white; border: 2px dashed var(--gray-400); border-radius: var(--radius); padding: 24px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; position: relative; }
+    .upload-card:hover, .upload-card.drag-over { border-color: var(--blue); background: var(--blue-light); }
+    .upload-card.loaded { border-color: var(--green); background: var(--green-light); }
+    .upload-card .icon { font-size: 32px; margin-bottom: 10px; }
+    .upload-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .upload-card p { font-size: 12px; color: var(--gray-600); }
+    .upload-card input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .upload-card .file-name { margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--green); word-break: break-all; }
+
+    /* ── Buttons ── */
+    .process-bar { padding: 0 32px 24px; display: flex; align-items: center; gap: 12px; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 22px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: filter .15s, opacity .15s; }
+    .btn:hover { filter: brightness(1.08); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; filter: none; }
+    .btn-primary { background: var(--blue); color: white; }
+    .btn-secondary { background: var(--gray-200); color: var(--gray-800); }
+    .btn-green { background: var(--green); color: white; }
+    #status-msg { font-size: 13px; color: var(--gray-600); flex: 1; }
+
+    /* ── Dashboard ── */
+    #dashboard { display: none; padding: 0 32px 48px; }
+    .section { margin-bottom: 36px; }
+    .section-title { font-size: 16px; font-weight: 700; color: var(--gray-900); margin-bottom: 14px; padding-bottom: 8px; border-bottom: 2px solid var(--gray-200); display: flex; align-items: center; gap: 8px; }
+    .badge { display: inline-flex; align-items: center; justify-content: center; background: var(--blue); color: white; font-size: 11px; font-weight: 700; border-radius: 99px; padding: 2px 8px; min-width: 22px; }
+
+    /* ── Team summary ── */
+    .team-summary { background: white; border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 24px; margin-bottom: 20px; display: flex; gap: 36px; align-items: center; flex-wrap: wrap; border-top: 3px solid var(--blue); }
+    .stat-item { display: flex; flex-direction: column; min-width: 100px; }
+    .stat-item .stat-val { font-size: 24px; font-weight: 800; color: var(--blue); line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .stat-item .stat-label { font-size: 11px; color: var(--gray-600); margin-top: 3px; text-transform: uppercase; letter-spacing: .5px; }
+    .stat-divider { width: 1px; height: 40px; background: var(--gray-200); }
+    .pay-period-chip { margin-left: auto; background: var(--blue-light); color: var(--blue-dark); border-radius: 6px; padding: 6px 14px; font-size: 13px; font-weight: 600; }
+
+    /* ── Tech cards ── */
+    .tech-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
+    .tech-card { background: white; border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px; border-left: 4px solid var(--blue); }
+    .tech-card.tier-2 { border-left-color: var(--amber); }
+    .tech-card.tier-3 { border-left-color: var(--green); }
+    .tech-card .tc-name { font-weight: 700; font-size: 15px; margin-bottom: 10px; }
+    .tc-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }
+    .tc-row .label { color: var(--gray-600); }
+    .tc-row .value { font-weight: 600; }
+    .tc-divider { border: none; border-top: 1px solid var(--gray-100); margin: 8px 0; }
+    .tier-badge { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: 11px; font-weight: 700; background: var(--blue-light); color: var(--blue); }
+    .tier-badge.t2 { background: var(--amber-light); color: var(--amber); }
+    .tier-badge.t3 { background: var(--green-light); color: var(--green); }
+    .tc-disc { color: var(--red); font-weight: 700; }
+
+    /* ── Controls ── */
+    .controls-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .controls-bar label { font-size: 13px; color: var(--gray-600); font-weight: 500; }
+    select, input[type=text] { border: 1px solid var(--gray-400); border-radius: 6px; padding: 6px 10px; font-size: 13px; background: white; color: var(--gray-900); }
+
+    /* ── Tables ── */
+    .table-wrap { overflow-x: auto; border-radius: var(--radius); box-shadow: var(--shadow); }
+    table { border-collapse: collapse; width: 100%; background: white; font-size: 13px; }
+    thead th { background: var(--gray-100); padding: 10px 12px; text-align: left; font-weight: 600; color: var(--gray-800); white-space: nowrap; border-bottom: 2px solid var(--gray-200); }
+    tbody td { padding: 9px 12px; border-bottom: 1px solid var(--gray-100); white-space: nowrap; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: var(--gray-50); }
+    tr.status-ok td { }
+    tr.status-warn td { background: #fffbee; }
+    tr.status-warn:hover td { background: #fff7d6; }
+    tr.status-err td { background: #fff5f5; }
+    tr.status-err:hover td { background: #ffe8e8; }
+    tr.status-missing td { background: #f5f5ff; }
+    tr.status-missing:hover td { background: #eeeefc; }
+    tr.tr-holiday td { background: #f3f4f6 !important; color: var(--gray-600); text-decoration: line-through; }
+    tr.tr-holiday:hover td { background: #e9ecef !important; }
+    tr.tr-paired td { background: #f0fdf4; }
+    tr.tr-paired:hover td { background: #dcfce7; }
+
+    /* Cell-level highlights */
+    td.cell-err  { background: #ffc8c8 !important; color: var(--red);   font-weight: 700; }
+    td.cell-warn { background: #fff0a0 !important; color: var(--amber); font-weight: 700; }
+
+    /* Status pills */
+    .status-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 99px; font-size: 12px; font-weight: 600; cursor: help; }
+    .pill-ok   { background: var(--green-light);  color: var(--green);  }
+    .pill-warn { background: var(--amber-light);  color: var(--amber);  }
+    .pill-err  { background: var(--red-light);    color: var(--red);    }
+    .pill-miss { background: #eeeeff; color: #5555cc; }
+    .pill-na   { background: var(--gray-100); color: var(--gray-600); }
+
+    /* Job type badges */
+    .jtype { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .jtype-IPE        { background: var(--purple-light); color: var(--purple); }
+    .jtype-OFFICE     { background: var(--teal-light);   color: var(--teal);   }
+    .jtype-MEETING    { background: var(--green-light);  color: var(--green);  }
+    .jtype-HOLIDAY    { background: var(--gray-100);     color: var(--gray-600); }
+    .jtype-TRAINING   { background: var(--amber-light);  color: var(--amber);  }
+    .jtype-COBALT_CLEAN { background: var(--gray-100);  color: var(--gray-600); }
+
+    /* Out-of-period collapsed rows */
+    tr.out-of-period td { color: var(--gray-600); background: var(--gray-50) !important; font-style: italic; }
+    tr.out-of-period:hover td { background: var(--gray-100) !important; }
+
+    /* Collapsible out-of-period group */
+    .oop-details { margin-top: 8px; }
+    .oop-details summary {
+      cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 6px;
+      background: var(--gray-100); color: var(--gray-600);
+      font-size: 13px; font-weight: 500;
+      border: 1px solid var(--gray-200);
+      user-select: none; list-style: none;
+    }
+    .oop-details summary::-webkit-details-marker { display: none; }
+    .oop-details summary::before { content: '▶'; font-size: 10px; transition: transform .15s; }
+    .oop-details[open] summary::before { transform: rotate(90deg); }
+    .oop-details summary:hover { background: var(--gray-200); }
+    .oop-details .oop-inner { margin-top: 8px; }
+
+    /* Numbers */
+    .num { font-variant-numeric: tabular-nums; }
+    .diff-pos { color: var(--green); font-weight: 600; }
+    .diff-neg { color: var(--red);   font-weight: 600; }
+
+    /* Section description */
+    .section-desc { font-size: 13px; color: var(--gray-600); background: var(--blue-light); border-left: 3px solid var(--blue); border-radius: 0 6px 6px 0; padding: 10px 14px; margin-bottom: 14px; line-height: 1.6; }
+    .sub-heading { font-size: 13px; font-weight: 700; color: var(--gray-800); margin: 16px 0 8px; padding-left: 4px; }
+
+    /* Empty */
+    .empty { text-align: center; padding: 40px; color: var(--gray-600); font-size: 14px; }
+    .empty .icon { font-size: 36px; margin-bottom: 10px; }
+
+    /* Toast */
+    #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--gray-800); color: white; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 500; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 9999; }
+    #toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="logo">🧹</div>
+  <div>
+    <h1>Cobalt Clean — Payroll Review</h1>
+    <div class="subtitle">PL Sheet vs. Launch27 cross-reference tool</div>
+  </div>
+</header>
+
+<div class="upload-section">
+  <div class="upload-card" id="drop-pl">
+    <input type="file" id="file-pl" accept=".xlsx,.xls">
+    <div class="icon">📊</div>
+    <h3>PL Payroll Sheet</h3>
+    <p>Drop or click to upload the .xlsx export from Google Sheets</p>
+    <div class="file-name" id="pl-name" style="display:none"></div>
+  </div>
+  <div class="upload-card" id="drop-l27">
+    <input type="file" id="file-l27" accept=".csv">
+    <div class="icon">📋</div>
+    <h3>Launch27 Export</h3>
+    <p>Drop or click to upload the .csv scheduling export</p>
+    <div class="file-name" id="l27-name" style="display:none"></div>
+  </div>
+</div>
+
+<div class="process-bar">
+  <button class="btn btn-primary" id="btn-process" disabled>⚡ Run Payroll Review</button>
+  <button class="btn btn-secondary" id="btn-reset" style="display:none">↺ Reset</button>
+  <span id="status-msg">Upload both files to begin.</span>
+</div>
+
+<div id="dashboard">
+
+  <!-- Section 1: Tech Summary Cards -->
+  <div class="section" id="sec-techs">
+    <div class="section-title">👤 Technician Summary <span class="badge" id="badge-techs">0</span></div>
+    <div class="team-summary" id="team-summary">
+      <div class="stat-item"><div class="stat-val" id="stat-total-jth">—</div><div class="stat-label">Total Team JTH</div></div>
+      <div class="stat-divider"></div>
+      <div class="stat-item"><div class="stat-val" id="stat-total-techs">—</div><div class="stat-label">Technicians</div></div>
+      <div class="stat-divider"></div>
+      <div class="stat-item"><div class="stat-val" id="stat-total-jobs">—</div><div class="stat-label">Matched Jobs</div></div>
+      <div class="stat-divider"></div>
+      <div class="stat-item"><div class="stat-val" id="stat-total-disc">—</div><div class="stat-label">Discrepancies</div></div>
+      <div class="pay-period-chip" id="pay-period-chip" style="display:none"></div>
+    </div>
+    <div class="tech-cards" id="tech-cards"></div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls-bar">
+    <label>Filter tech:</label>
+    <select id="filter-tech"><option value="">All Technicians</option></select>
+    <label>Filter status:</label>
+    <select id="filter-status">
+      <option value="">All Statuses</option>
+      <option value="ok">✅ Match</option>
+      <option value="warn">⚠️ Minor</option>
+      <option value="err">🔴 Discrepancy</option>
+      <option value="miss">Missing</option>
+    </select>
+    <button class="btn btn-green" id="btn-export" style="margin-left:auto">⬇ Export CSV</button>
+  </div>
+
+  <!-- Section 2: Discrepancy Table -->
+  <div class="section" id="sec-disc">
+    <div class="section-title">🔍 Job-Level Comparison <span class="badge" id="badge-disc">0</span></div>
+    <div class="table-wrap">
+      <table id="disc-table">
+        <thead>
+          <tr>
+            <th>Date</th><th>Client</th><th>Tech</th>
+            <th>Final Amount (L27)</th><th>PL Total</th>
+            <th>L27 Techs</th><th>PL Techs</th>
+            <th>L27 JTH</th><th>PL JTH</th>
+            <th>L27 Tip</th><th>PL Tip</th>
+            <th>Expected Comm.</th><th>PL Comm.</th><th>Δ Comm.</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="disc-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Section 3: Unmatched -->
+  <div class="section" id="sec-unmatched">
+    <div class="section-title">❓ Missing / Unmatched Jobs <span class="badge" id="badge-unmatched">0</span></div>
+    <div class="table-wrap">
+      <table id="unmatched-table">
+        <thead>
+          <tr><th>Source</th><th>Date</th><th>Client / Name</th><th>Tech</th><th>Total</th><th>JTH</th><th>Note</th></tr>
+        </thead>
+        <tbody id="unmatched-body"></tbody>
+      </table>
+    </div>
+    <div id="unmatched-oop"></div>
+  </div>
+
+  <!-- Section 4: Internal -->
+  <div class="section" id="sec-internal">
+    <div class="section-title">🏢 Internal / Training Entries <span class="badge" id="badge-internal">0</span></div>
+    <div class="section-desc">
+      These entries include Cobalt Clean internal jobs — training sessions, office shifts, IPE evaluations, team meetings, and federal holidays. Where a PL entry and a Launch27 entry match by date and technician, they are shown as a paired row with expected pay calculated from the flat hourly rate. Entries found only in Launch27 are shown separately. Federal holidays are excluded from tier JTH calculations and pay $0.
+    </div>
+
+    <!-- Paired (PL + L27) -->
+    <div id="paired-internal-section">
+      <div class="sub-heading">Paired Entries (PL + L27 matched)</div>
+      <div class="table-wrap">
+        <table id="paired-internal-table">
+          <thead>
+            <tr><th>Date</th><th>Tech</th><th>PL Description</th><th>L27 Name</th><th>Job Type</th><th>PL JTH</th><th>L27 JTH</th><th>Exp. Pay</th><th>PL Pay</th><th>Status</th></tr>
+          </thead>
+          <tbody id="paired-internal-body"></tbody>
+        </table>
+      </div>
+      <div id="paired-oop"></div>
+    </div>
+
+    <!-- L27-only internal -->
+    <div id="l27only-internal-section">
+      <div class="sub-heading">L27-only Internal Entries</div>
+      <div class="table-wrap">
+        <table id="l27only-internal-table">
+          <thead>
+            <tr><th>Date</th><th>L27 Name</th><th>Teams Assigned</th><th>Duration</th><th>Job Type</th></tr>
+          </thead>
+          <tbody id="l27only-internal-body"></tbody>
+        </table>
+      </div>
+      <div id="l27only-oop"></div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+let plFile = null, l27File = null;
+let allRows = [], techData = [], internalJobs = [];
+let globalPayStart = null, globalPayEnd = null;
+
+// ─── Basic helpers ─────────────────────────────────────────────────────────────
+function fmt$(v)  { return '$' + (Number(v)||0).toFixed(2); }
+function fmtH(v)  { return (Number(v)||0).toFixed(2) + 'h'; }
+function fmtMi(v) { return (Number(v)||0).toFixed(1) + ' mi'; }
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function parseNum(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  if (typeof v === 'number') return v;
+  return parseFloat(String(v).replace(/[$,]/g,'')) || 0;
+}
+
+// ─── Date helpers ──────────────────────────────────────────────────────────────
+function parseDuration(str) {
+  if (!str && str !== 0) return 0;
+  const s = String(str).trim(), p = s.split(':');
+  if (p.length === 3) return +p[0] + +p[1]/60 + +p[2]/3600;
+  if (p.length === 2) return +p[0] + +p[1]/60;
+  return parseFloat(s) || 0;
+}
+function normalizeDate(d) {
+  if (!d && d !== 0) return null;
+  if (d instanceof Date) { const y=d.getFullYear(),m=d.getMonth()+1,dd=d.getDate(); return `${y}-${String(m).padStart(2,'0')}-${String(dd).padStart(2,'0')}`; }
+  if (typeof d === 'number') { const ms=(d-25569)*86400*1000, dt=new Date(ms); return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`; }
+  if (typeof d === 'string') {
+    const m1 = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m1) return `${m1[3]}-${m1[1].padStart(2,'0')}-${m1[2].padStart(2,'0')}`;
+    const m2 = d.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m2) return d.slice(0,10);
+    const dt = new Date(d); if (!isNaN(dt)) return normalizeDate(dt);
+  }
+  return null;
+}
+function displayDate(iso) {
+  if (!iso) return '—';
+  const [y,m,dd] = iso.split('-'); return `${m}/${dd}/${y}`;
+}
+function shiftDate(iso, days) {
+  const d = new Date(iso+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+days); return d.toISOString().slice(0,10);
+}
+function isWithinBuffer(date, start, end, buf) {
+  if (!date||!start||!end) return true;
+  return date >= shiftDate(start,-buf) && date <= shiftDate(end,+buf);
+}
+
+// ─── Pay period parser ─────────────────────────────────────────────────────────
+function parsePayPeriod(text) {
+  const h = String(text||'');
+  const m = h.match(/(\d{1,2})\/(\d{1,2})\s*[-–—]\s*(\d{1,2})\/(\d{1,2})\s+(\d{4})/);
+  if (m) {
+    const ey=+m[5],em=+m[3],ed=+m[4],sm=+m[1],sd=+m[2];
+    const sy = sm>em ? ey-1 : ey;
+    return { start:`${sy}-${String(sm).padStart(2,'0')}-${String(sd).padStart(2,'0')}`, end:`${ey}-${String(em).padStart(2,'0')}-${String(ed).padStart(2,'0')}`, label:`${m[1]}/${m[2]} – ${m[3]}/${m[4]} ${m[5]}` };
+  }
+  const m2 = h.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s*[-–—]\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m2) {
+    return { start:`${m2[3]}-${m2[1].padStart(2,'0')}-${m2[2].padStart(2,'0')}`, end:`${m2[6]}-${m2[4].padStart(2,'0')}-${m2[5].padStart(2,'0')}`, label:`${m2[1]}/${m2[2]}/${m2[3]} – ${m2[4]}/${m2[5]}/${m2[6]}` };
+  }
+  return { start:null, end:null, label:null };
+}
+
+// ─── Internal job type detection ───────────────────────────────────────────────
+// Returns null for regular client jobs, or one of the INTERNAL_TYPES keys
+const INTERNAL_TYPES = {
+  IPE:          { label:'IPE ($23/hr)',       rate:23,   cssClass:'jtype-IPE'         },
+  OFFICE:       { label:'Office Shift ($20/hr)', rate:20, cssClass:'jtype-OFFICE'    },
+  MEETING:      { label:'Team Meeting ($17/hr)', rate:17, cssClass:'jtype-MEETING'   },
+  HOLIDAY:      { label:'Federal Holiday ($0)',  rate:0,  cssClass:'jtype-HOLIDAY', excludeJTH:true },
+  TRAINING:     { label:'Training',          rate:null, cssClass:'jtype-TRAINING'    },
+  COBALT_CLEAN: { label:'Internal (Review)', rate:null, cssClass:'jtype-COBALT_CLEAN' },
+};
+
+function detectInternalJobType(name) {
+  if (!name) return null;
+  const s = name.toLowerCase();
+  if (s.includes('ipe'))                    return 'IPE';
+  if (s.includes('office'))                 return 'OFFICE';
+  if (s.includes('meeting'))                return 'MEETING';
+  if (s.includes('holiday'))                return 'HOLIDAY';
+  if (s.includes('training'))               return 'TRAINING';
+  if (s.includes('cobalt'))                 return 'COBALT_CLEAN';
+  return null;
+}
+
+function calcInternalExpectedPay(internalType, jth) {
+  const def = INTERNAL_TYPES[internalType];
+  if (!def || def.rate === null) return null;
+  return def.rate * jth;
+}
+
+function jtypeBadge(type) {
+  const def = INTERNAL_TYPES[type];
+  if (!def) return '';
+  return `<span class="jtype ${def.cssClass}">${escHtml(def.label)}</span>`;
+}
+
+// ─── Fuzzy matching helpers ────────────────────────────────────────────────────
+function lev(a, b) {
+  a = a.toLowerCase(); b = b.toLowerCase();
+  const m=a.length, n=b.length, dp=[];
+  for (let i=0;i<=m;i++) dp[i]=[i];
+  for (let j=0;j<=n;j++) dp[0][j]=j;
+  for (let i=1;i<=m;i++) for (let j=1;j<=n;j++) dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  return dp[m][n];
+}
+function lastName(name) {
+  if (!name) return '';
+  return String(name).trim().split(/\s+/).pop().toLowerCase().replace(/[^a-z]/g,'');
+}
+function clientMatch(plClient, l27Name) {
+  if (!plClient||!l27Name) return false;
+  const pl=String(plClient).toLowerCase().trim(), l27=String(l27Name).toLowerCase().trim();
+  if (l27.includes(pl)||pl.includes(l27)) return true;
+  const a=lastName(plClient), b=lastName(l27Name);
+  if (!a||!b) return false;
+  return a===b || lev(a,b)<=2;
+}
+function techNameMatch(l27Member, plTabName) {
+  const l27=l27Member.replace(/\.$/,'').toLowerCase().trim();
+  const pl=plTabName.toLowerCase().trim();
+  if (l27===pl) return true;
+  const lp=l27.split(/\s+/), pp=pl.split(/\s+/);
+  if (!lp[0]||!pp[0]) return false;
+  if (lev(lp[0],pp[0])>1) return false;
+  if (pp.length===1||lp.length===1) return true;
+  return lp[1][0]===pp[1][0];
+}
+
+// ─── PL Sheet Parser ───────────────────────────────────────────────────────────
+const SKIP_TABS       = ['TEMPLATE','TEMPLATE_EE','Old_Example'];
+const SPECIAL_KEYWORDS = ['laundry','review','training'];
+
+function parsePLSheet(workbook) {
+  const techs = [];
+  for (const sheetName of workbook.SheetNames) {
+    if (SKIP_TABS.includes(sheetName)) continue;
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) continue;
+    const data = XLSX.utils.sheet_to_json(sheet, { header:1, defval:null, blankrows:true, raw:true });
+    if (!data || data.length < 4) continue;
+
+    const headerText = String((data[0]||[])[0] || (data[0]||[])[1] || sheetName);
+    const { start:payPeriodStart, end:payPeriodEnd, label:payPeriodLabel } = parsePayPeriod(headerText);
+
+    const tech = { tabName:sheetName, headerText, payPeriodStart, payPeriodEnd, payPeriodLabel, jobs:[], specialRows:[], totalRow:null };
+
+    for (let i = 3; i < data.length; i++) {
+      const row = data[i];
+      if (!row || row.every(c=>c===null)) continue;
+      const dateVal=row[0], clientVal=row[1];
+      const clientStr = String(clientVal||'').toLowerCase().trim();
+
+      if (clientStr==='total' || String(dateVal||'').toLowerCase().includes('total')) { tech.totalRow=row; continue; }
+
+      const isSpecial = !dateVal && SPECIAL_KEYWORDS.some(k=>clientStr.includes(k));
+      if (isSpecial) {
+        tech.specialRows.push({ description:String(clientVal||'').trim(), tipBonus:parseNum(row[9]), mileage:parseNum(row[10]), mileageReimbursement:parseNum(row[11]) });
+        continue;
+      }
+
+      if (!dateVal && dateVal!==0) continue;
+      const normDate = normalizeDate(dateVal);
+      if (!normDate) continue;
+
+      const client = String(clientVal||'').trim();
+      tech.jobs.push({
+        date:normDate, client,
+        total:parseNum(row[2]), numTechs:Math.max(1,parseInt(row[3])||1),
+        totalWithTeams:parseNum(row[4]),
+        tier1:parseNum(row[5]), tier2:parseNum(row[6]), tier3:parseNum(row[7]),
+        jth:parseNum(row[8]), tipBonus:parseNum(row[9]),
+        mileage:parseNum(row[10]), mileageReimbursement:parseNum(row[11]),
+        effectiveHrly:parseNum(row[12]), totalIfTier1:parseNum(row[13]),
+        internalType: detectInternalJobType(client),
+      });
+    }
+
+    // Totals from TOTAL row
+    if (tech.totalRow) {
+      tech.totalJTH = parseNum(tech.totalRow[8]);
+      tech.totalMileage = parseNum(tech.totalRow[10]);
+      tech.totalMileageReimbursement = parseNum(tech.totalRow[11]);
+    } else {
+      tech.totalJTH = tech.jobs.reduce((s,j)=>s+j.jth, 0);
+      tech.totalMileage = tech.jobs.reduce((s,j)=>s+j.mileage, 0);
+      tech.totalMileageReimbursement = tech.jobs.reduce((s,j)=>s+j.mileageReimbursement, 0);
+    }
+
+    // Federal holidays excluded from tier JTH
+    const holidayJTH = tech.jobs.filter(j=>j.internalType==='HOLIDAY').reduce((s,j)=>s+j.jth, 0);
+    tech.tierJTH = Math.max(0, tech.totalJTH - holidayJTH);
+    tech.tier = tech.tierJTH >= 32 ? 3 : tech.tierJTH >= 26 ? 2 : 1;
+
+    tech.plTotalCommission = tech.jobs.reduce((s,j) => s + (tech.tier===3?j.tier3:tech.tier===2?j.tier2:j.tier1), 0);
+    tech.totalTips = tech.jobs.reduce((s,j)=>s+j.tipBonus,0) + tech.specialRows.reduce((s,r)=>s+r.tipBonus,0);
+
+    techs.push(tech);
+  }
+  return techs;
+}
+
+// ─── L27 CSV Parser ────────────────────────────────────────────────────────────
+function parseL27CSV(csvText) {
+  const result = Papa.parse(csvText, { header:true, skipEmptyLines:true, dynamicTyping:false, transformHeader:h=>h.trim() });
+  return result.data.map(row => {
+    const rawTotal =
+      (row['Final Amount']!==undefined&&row['Final Amount']!==''&&row['Final Amount']!==null) ? row['Final Amount']
+      : (row['Subtotal']!==undefined&&row['Subtotal']!==''&&row['Subtotal']!==null) ? row['Subtotal']
+      : row['Service Total'];
+    const tip = parseNum(row['Tip']);
+    const serviceTotal = parseNum(rawTotal) - tip;  // Final Amount includes tip
+    const fullName = (row['Full Name']||'').trim();
+    const teamsStr = row['Teams Assigned']||'';
+    const teams = teamsStr.split(',').map(t=>{const m=t.trim().match(/\d+:\s*(.+)/);return m?m[1].trim():t.trim();}).filter(Boolean);
+    return {
+      date: normalizeDate(row['Date']),
+      time: (row['Time']||'').trim(),
+      fullName, serviceTotal, tip,
+      paymentMethod: (row['Payment Method']||'').trim(),
+      teamsAssigned: teams,
+      duration: parseDuration(row['Duration']),
+      numTechs: teams.length||1,
+      isInternal: fullName==='Cobalt Clean' && serviceTotal<=0,
+    };
+  });
+}
+
+// ─── Commission Calculation ────────────────────────────────────────────────────
+const TIER_RATES = {1:0.40, 2:0.42, 3:0.44};
+const MIN_RATES  = {1:21,   2:22,   3:23  };
+const MIN_THRESHOLD = 20;
+
+function calcExpectedCommission(tier, serviceTotal, numTechs, jth) {
+  const revenueShare = serviceTotal / Math.max(1, numTechs);
+  const rate = TIER_RATES[tier]||0.40;
+  const commission = revenueShare * rate;
+  const commPerJTH = jth>0 ? commission/jth : 0;
+  const minRate = MIN_RATES[tier]||21;
+  if (commPerJTH < MIN_THRESHOLD && jth>0) return { commission: minRate*jth, method:'min', revenueShare };
+  return { commission, method:'pct', revenueShare };
+}
+
+// ─── Matching ──────────────────────────────────────────────────────────────────
+// l27Internal: all isInternal L27 jobs — used to pair up PL-only internal entries
+function matchAll(techs, l27Jobs, l27Internal, globalStart, globalEnd) {
+  const rows = [], usedL27 = new Set(), usedL27Int = new Set();
+
+  for (const tech of techs) {
+    for (const plJob of tech.jobs) {
+      let best = null;
+
+      // Try to match against regular L27 jobs
+      for (let i = 0; i < l27Jobs.length; i++) {
+        const lj = l27Jobs[i];
+        if (lj.isInternal) continue;
+        if (globalStart && globalEnd && !isWithinBuffer(lj.date, globalStart, globalEnd, 2)) continue;
+        if (lj.date !== plJob.date) continue;
+        if (!lj.teamsAssigned.some(t => techNameMatch(t, tech.tabName))) continue;
+        if (!clientMatch(plJob.client, lj.fullName)) continue;
+        if (!best || (!usedL27.has(i) && usedL27.has(best.i))) best = { lj, i };
+      }
+
+      if (best) {
+        usedL27.add(best.i);
+        const lj = best.lj;
+        let expComm;
+        if (plJob.internalType && plJob.internalType !== 'COBALT_CLEAN') {
+          // Internal job matched in L27 — use flat rate
+          expComm = calcInternalExpectedPay(plJob.internalType, plJob.jth) ?? 0;
+        } else {
+          expComm = calcExpectedCommission(tech.tier, lj.serviceTotal, lj.numTechs, lj.duration).commission;
+        }
+        const plComm = tech.tier===3?plJob.tier3:tech.tier===2?plJob.tier2:plJob.tier1;
+        const totalDiff = Math.abs(lj.serviceTotal - plJob.total);
+        const techDiff  = Math.abs(lj.numTechs - plJob.numTechs);
+        const jthDiff   = Math.abs(lj.duration - plJob.jth);
+        const commDiff  = Math.abs(expComm - plComm);
+        const plTipScaled = plJob.tipBonus * lj.numTechs;
+        const tipDiff   = Math.abs(lj.tip - plTipScaled);
+
+        let status = 'ok';
+        if (commDiff>5||totalDiff>5||techDiff>0||jthDiff>0.25) status='err';
+        else if (commDiff>0.01||totalDiff>0.01||tipDiff>1) status='warn';
+
+        const flags = {
+          total: totalDiff>5?'err':totalDiff>0.01?'warn':null,
+          techs: techDiff>0?'err':null,
+          jth:   jthDiff>0.25?'err':jthDiff>0.01?'warn':null,
+          comm:  commDiff>5?'err':commDiff>0.01?'warn':null,
+          tip:   tipDiff>1?'err':null,
+        };
+        rows.push({ type:'matched', tech:tech.tabName, tier:tech.tier, date:plJob.date, client:plJob.client, l27Name:lj.fullName, l27Total:lj.serviceTotal, plTotal:plJob.total, l27Techs:lj.numTechs, plTechs:plJob.numTechs, l27JTH:lj.duration, plJTH:plJob.jth, l27Tip:lj.tip, plTip:plJob.tipBonus, plTipScaled, expComm, plComm, commDiff:expComm-plComm, status, flags });
+      } else {
+        // No regular L27 match — try pairing with an L27 internal entry
+        let intMatch = null;
+        for (let i = 0; i < l27Internal.length; i++) {
+          if (usedL27Int.has(i)) continue;
+          const lj = l27Internal[i];
+          if (lj.date !== plJob.date) continue;
+          if (!lj.teamsAssigned.some(t => techNameMatch(t, tech.tabName))) continue;
+          intMatch = { lj, i };
+          break;
+        }
+
+        if (intMatch) {
+          usedL27Int.add(intMatch.i);
+          const lj = intMatch.lj;
+          const jobType  = plJob.internalType || detectInternalJobType(lj.fullName) || 'COBALT_CLEAN';
+          const expPay   = calcInternalExpectedPay(jobType, plJob.jth);
+          const plPay    = tech.tier===3?plJob.tier3:tech.tier===2?plJob.tier2:plJob.tier1;
+          const isHoliday = jobType === 'HOLIDAY';
+
+          let status = 'ok';
+          if (!isHoliday && expPay !== null) {
+            const diff = Math.abs(expPay - plPay);
+            if (diff > 1) status = 'err';
+          } else if (isHoliday && plPay > 0) {
+            status = 'err'; // holiday should be $0
+          }
+
+          rows.push({ type:'paired_internal', tech:tech.tabName, date:plJob.date, plClient:plJob.client, l27Name:lj.fullName, plJTH:plJob.jth, l27JTH:lj.duration, jobType, expPay, plPay, status, l27InternalJob:lj, isHoliday });
+        } else {
+          rows.push({ type:'unmatched_pl', tech:tech.tabName, date:plJob.date, client:plJob.client, total:plJob.total, jth:plJob.jth, status:'miss' });
+        }
+      }
+    }
+  }
+
+  // L27 non-internal jobs not matched to any PL entry
+  for (let i = 0; i < l27Jobs.length; i++) {
+    if (l27Jobs[i].isInternal || usedL27.has(i)) continue;
+    const lj = l27Jobs[i];
+    const outOfPeriod = globalStart && globalEnd ? !isWithinBuffer(lj.date, globalStart, globalEnd, 2) : false;
+    rows.push({ type:'unmatched_l27', date:lj.date, client:lj.fullName, teams:lj.teamsAssigned.join(', '), total:lj.serviceTotal, jth:lj.duration, status:'miss', outOfPeriod });
+  }
+
+  return rows;
+}
+
+// ─── Render ────────────────────────────────────────────────────────────────────
+function render(techs, rows, l27Internal, gStart, gEnd) {
+  techData = techs; allRows = rows; internalJobs = l27Internal;
+  globalPayStart = gStart; globalPayEnd = gEnd;
+
+  const sel = document.getElementById('filter-tech');
+  sel.innerHTML = '<option value="">All Technicians</option>';
+  techs.forEach(t => { const o=document.createElement('option'); o.value=t.tabName; o.textContent=t.tabName; sel.appendChild(o); });
+
+  renderTeamSummary(techs, rows);
+  renderTechCards(techs, rows);
+  renderDiscTable(rows, '', '');
+  renderUnmatched(rows, gStart, gEnd);
+
+  // Separate paired internal from unpaired L27 internal
+  const pairedRows = rows.filter(r => r.type === 'paired_internal');
+  const pairedL27Set = new Set(pairedRows.map(r => r.l27InternalJob));
+  const unpairedL27Int = l27Internal.filter(j => !pairedL27Set.has(j));
+  renderInternal(unpairedL27Int, pairedRows, gStart, gEnd);
+
+  document.getElementById('dashboard').style.display = 'block';
+}
+
+// ─── Team summary ──────────────────────────────────────────────────────────────
+function renderTeamSummary(techs, rows) {
+  const totalJTH = techs.reduce((s,t)=>s+t.totalJTH, 0);
+  const matched  = rows.filter(r=>r.type==='matched');
+  const disc     = matched.filter(r=>r.status==='err').length;
+  document.getElementById('stat-total-jth').textContent   = totalJTH.toFixed(2)+'h';
+  document.getElementById('stat-total-techs').textContent = techs.length;
+  document.getElementById('stat-total-jobs').textContent  = matched.length;
+  document.getElementById('stat-total-disc').textContent  = disc;
+  const anyPeriod = techs.find(t=>t.payPeriodLabel);
+  const chip = document.getElementById('pay-period-chip');
+  if (anyPeriod) { chip.textContent='📅 Pay Period: '+anyPeriod.payPeriodLabel; chip.style.display='block'; }
+  else chip.style.display='none';
+}
+
+// ─── Tech cards ────────────────────────────────────────────────────────────────
+function renderTechCards(techs, rows) {
+  const container = document.getElementById('tech-cards');
+  document.getElementById('badge-techs').textContent = techs.length;
+  container.innerHTML = '';
+  techs.forEach(tech => {
+    const techRows    = rows.filter(r=>r.type==='matched'&&r.tech===tech.tabName);
+    const discCount   = techRows.filter(r=>r.status==='err').length;
+    const warnCount   = techRows.filter(r=>r.status==='warn').length;
+    const appCalcComm = techRows.reduce((s,r)=>s+r.expComm, 0);
+    const tierClass   = tech.tier===3?'tier-3':tech.tier===2?'tier-2':'';
+    const tierBadge   = tech.tier===3?'t3':tech.tier===2?'t2':'';
+    const commDiff    = appCalcComm - tech.plTotalCommission;
+    const diffStr     = commDiff>=0?`+${fmt$(commDiff)}`:fmt$(commDiff);
+    const diffClass   = Math.abs(commDiff)>1?(commDiff>0?'diff-pos':'diff-neg'):'';
+    const hasMileage  = tech.totalMileage>0||tech.totalMileageReimbursement>0;
+    const mileHtml    = hasMileage?`<hr class="tc-divider"><div class="tc-row"><span class="label">Mileage</span><span class="value">${fmtMi(tech.totalMileage)}</span></div><div class="tc-row"><span class="label">Mileage Reimb.</span><span class="value">${fmt$(tech.totalMileageReimbursement)}</span></div>`:'';
+    const tierNote    = tech.tierJTH < tech.totalJTH ? `<span style="font-size:11px;color:var(--gray-600);margin-left:4px">(tier JTH: ${fmtH(tech.tierJTH)})</span>` : '';
+    container.innerHTML += `
+      <div class="tech-card ${tierClass}">
+        <div class="tc-name">${escHtml(tech.tabName)}<span class="tier-badge ${tierBadge}" style="margin-left:8px">Tier ${tech.tier}</span></div>
+        <div class="tc-row"><span class="label">Total JTH</span><span class="value">${fmtH(tech.totalJTH)}${tierNote}</span></div>
+        <hr class="tc-divider">
+        <div class="tc-row"><span class="label">PL Commission</span><span class="value">${fmt$(tech.plTotalCommission)}</span></div>
+        <div class="tc-row"><span class="label">Calc. Commission</span><span class="value">${fmt$(appCalcComm)}</span></div>
+        <div class="tc-row"><span class="label">Difference</span><span class="value ${diffClass}">${diffStr}</span></div>
+        <hr class="tc-divider">
+        <div class="tc-row"><span class="label">Total Tips</span><span class="value">${fmt$(tech.totalTips)}</span></div>
+        ${mileHtml}
+        <hr class="tc-divider">
+        <div class="tc-row"><span class="label">Discrepancies</span><span class="value ${discCount>0?'tc-disc':''}">${discCount} 🔴 · ${warnCount} ⚠️</span></div>
+      </div>`;
+  });
+}
+
+// ─── Status pills ──────────────────────────────────────────────────────────────
+const STATUS_TOOLTIPS = {
+  ok:   'All values align between the PL sheet and Launch27 for this job',
+  warn: 'Small difference detected (under $5). May be a rounding difference — worth a quick check',
+  err:  'Meaningful difference found in service total, number of techs, JTH, or commission. Review and correct in the PL before submitting payroll',
+  miss: 'No matching entry found in the other source — verify this job exists in both systems',
+};
+function statusPill(s) {
+  const tip=escHtml(STATUS_TOOLTIPS[s]||'');
+  if (s==='ok')   return `<span class="status-pill pill-ok"   title="${tip}">✅ Match</span>`;
+  if (s==='warn') return `<span class="status-pill pill-warn" title="${tip}">⚠️ Minor</span>`;
+  if (s==='err')  return `<span class="status-pill pill-err"  title="${tip}">🔴 Discrepancy</span>`;
+  return                  `<span class="status-pill pill-miss" title="${tip}">❓ Missing</span>`;
+}
+
+// ─── Discrepancy table ─────────────────────────────────────────────────────────
+function renderDiscTable(rows, techFilter, statusFilter) {
+  const body = document.getElementById('disc-body');
+  let visible = rows.filter(r=>r.type==='matched');
+  if (techFilter)   visible = visible.filter(r=>r.tech===techFilter);
+  if (statusFilter) visible = visible.filter(r=>r.status===statusFilter);
+  document.getElementById('badge-disc').textContent = visible.length;
+
+  if (!visible.length) { body.innerHTML=`<tr><td colspan="15" class="empty"><div class="icon">✅</div>No matching rows for selected filters.</td></tr>`; return; }
+
+  const cc = f => f==='err'?' cell-err':f==='warn'?' cell-warn':'';
+  body.innerHTML = visible.map(r => {
+    const cd=r.commDiff, cdStr=cd>=0?`+${fmt$(cd)}`:fmt$(cd);
+    const cdClass=Math.abs(cd)>1?(cd>0?'diff-pos':'diff-neg'):'';
+    const rowClass=r.status==='err'?'status-err':r.status==='warn'?'status-warn':'status-ok';
+    const f=r.flags||{};
+    const tipNote = r.plTipScaled!==undefined && Math.abs(r.l27Tip-r.plTipScaled)>0.01
+      ? ` <span style="font-size:11px;opacity:.7">(${fmt$(r.plTip)}×${r.l27Techs}=${fmt$(r.plTipScaled)})</span>` : '';
+    return `<tr class="${rowClass}">
+      <td>${displayDate(r.date)}</td><td>${escHtml(r.client)}</td><td>${escHtml(r.tech)}</td>
+      <td class="num${cc(f.total)}">${fmt$(r.l27Total)}</td><td class="num${cc(f.total)}">${fmt$(r.plTotal)}</td>
+      <td class="num${cc(f.techs)}">${r.l27Techs}</td><td class="num${cc(f.techs)}">${r.plTechs}</td>
+      <td class="num${cc(f.jth)}">${fmtH(r.l27JTH)}</td><td class="num${cc(f.jth)}">${fmtH(r.plJTH)}</td>
+      <td class="num${cc(f.tip)}">${fmt$(r.l27Tip)}</td><td class="num${cc(f.tip)}">${fmt$(r.plTip)}${tipNote}</td>
+      <td class="num${cc(f.comm)}">${fmt$(r.expComm)}</td><td class="num${cc(f.comm)}">${fmt$(r.plComm)}</td>
+      <td class="num ${cdClass}">${cdStr}</td>
+      <td>${statusPill(r.status)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── Unmatched table ───────────────────────────────────────────────────────────
+function renderUnmatched(rows, gStart, gEnd) {
+  const unmatched = rows.filter(r=>r.type==='unmatched_pl'||r.type==='unmatched_l27');
+  const inPeriod  = unmatched.filter(r=>!r.outOfPeriod);
+  const outPeriod = unmatched.filter(r=>r.outOfPeriod);
+  document.getElementById('badge-unmatched').textContent = inPeriod.length;
+
+  const body = document.getElementById('unmatched-body');
+
+  if (!inPeriod.length) {
+    body.innerHTML = `<tr><td colspan="7" class="empty">No unmatched in-period jobs — great!</td></tr>`;
+  } else {
+    body.innerHTML = inPeriod.map(r => {
+      const isPL = r.type==='unmatched_pl';
+      const source = isPL
+        ? `<span title="This job appears in the PL payroll sheet but has no matching entry in the Launch27 export">📊 PL Only</span>`
+        : `<span title="This job appears in the Launch27 export but has no matching row in the PL payroll sheet">📋 L27 Only</span>`;
+      const tech = isPL ? escHtml(r.tech) : escHtml(r.teams||'—');
+      const note = isPL
+        ? `<span class="status-pill pill-miss" title="${escHtml(STATUS_TOOLTIPS.miss)}">No Launch27 match</span>`
+        : `<span class="status-pill pill-miss" title="${escHtml(STATUS_TOOLTIPS.miss)}">No PL match</span>`;
+      return `<tr class="status-missing"><td>${source}</td><td>${displayDate(r.date)}</td><td>${escHtml(r.client)}</td><td>${tech}</td><td class="num">${fmt$(r.total)}</td><td class="num">${fmtH(r.jth)}</td><td>${note}</td></tr>`;
+    }).join('');
+  }
+
+  // Out-of-period collapsed
+  const oopEl = document.getElementById('unmatched-oop');
+  if (!outPeriod.length) { oopEl.innerHTML=''; return; }
+  const oopRows = outPeriod.map(r => `<tr class="out-of-period"><td>📋 L27 Only</td><td>${displayDate(r.date)}</td><td>${escHtml(r.client)}</td><td>${escHtml(r.teams||'—')}</td><td class="num">${fmt$(r.total)}</td><td class="num">${fmtH(r.jth)}</td><td style="font-size:12px;color:var(--gray-600);font-style:normal">Outside pay period</td></tr>`).join('');
+  oopEl.innerHTML = `<details class="oop-details"><summary>Outside pay period (${outPeriod.length} job${outPeriod.length!==1?'s':''})</summary><div class="oop-inner"><div class="table-wrap"><table><thead><tr><th>Source</th><th>Date</th><th>Client / Name</th><th>Tech</th><th>Total</th><th>JTH</th><th>Note</th></tr></thead><tbody>${oopRows}</tbody></table></div></div></details>`;
+}
+
+// ─── Internal section ─────────────────────────────────────────────────────────
+function renderInternal(l27Jobs, pairedRows, gStart, gEnd) {
+  const totalCount = l27Jobs.length + pairedRows.length;
+  document.getElementById('badge-internal').textContent = totalCount;
+
+  // ── Paired rows ──
+  const pairedIn  = pairedRows.filter(r => !gStart || isWithinBuffer(r.date, gStart, gEnd, 2));
+  const pairedOop = pairedRows.filter(r =>  gStart && !isWithinBuffer(r.date, gStart, gEnd, 2));
+  const pairedSec = document.getElementById('paired-internal-section');
+  const pairedBody = document.getElementById('paired-internal-body');
+  const pairedOopEl = document.getElementById('paired-oop');
+
+  if (!pairedRows.length) {
+    pairedSec.style.display = 'none';
+  } else {
+    pairedSec.style.display = 'block';
+    const pairedRowHtml = r => {
+      const def = INTERNAL_TYPES[r.jobType]||{};
+      const rowClass = r.isHoliday ? 'tr-holiday' : 'tr-paired';
+      const expStr = r.expPay !== null ? fmt$(r.expPay) : '—';
+      const pill = r.isHoliday ? `<span class="status-pill pill-na">🏖 Holiday</span>`
+                 : r.expPay === null ? `<span class="status-pill pill-na">Manual Review</span>`
+                 : statusPill(r.status);
+      return `<tr class="${rowClass}"><td>${displayDate(r.date)}</td><td>${escHtml(r.tech)}</td><td>${escHtml(r.plClient)}</td><td>${escHtml(r.l27Name)}</td><td>${jtypeBadge(r.jobType)}</td><td class="num">${fmtH(r.plJTH)}</td><td class="num">${fmtH(r.l27JTH)}</td><td class="num">${expStr}</td><td class="num">${fmt$(r.plPay)}</td><td>${pill}</td></tr>`;
+    };
+    pairedBody.innerHTML = pairedIn.length ? pairedIn.map(pairedRowHtml).join('') : `<tr><td colspan="10" class="empty">No paired internal entries in this pay period.</td></tr>`;
+    if (pairedOop.length) {
+      const oopH = pairedOop.map(pairedRowHtml).join('');
+      pairedOopEl.innerHTML = `<details class="oop-details"><summary>Outside pay period (${pairedOop.length} paired)</summary><div class="oop-inner"><div class="table-wrap"><table><thead><tr><th>Date</th><th>Tech</th><th>PL Description</th><th>L27 Name</th><th>Job Type</th><th>PL JTH</th><th>L27 JTH</th><th>Exp. Pay</th><th>PL Pay</th><th>Status</th></tr></thead><tbody>${oopH}</tbody></table></div></div></details>`;
+    } else { pairedOopEl.innerHTML=''; }
+  }
+
+  // ── L27-only internal rows ──
+  const l27In  = l27Jobs.filter(j => !gStart || isWithinBuffer(j.date, gStart, gEnd, 2));
+  const l27Oop = l27Jobs.filter(j =>  gStart && !isWithinBuffer(j.date, gStart, gEnd, 2));
+  const l27Sec = document.getElementById('l27only-internal-section');
+  const l27Body = document.getElementById('l27only-internal-body');
+  const l27OopEl = document.getElementById('l27only-oop');
+
+  if (!l27Jobs.length) {
+    l27Sec.style.display = 'none';
+  } else {
+    l27Sec.style.display = 'block';
+    const l27RowHtml = j => {
+      const jtype = detectInternalJobType(j.fullName) || 'COBALT_CLEAN';
+      return `<tr><td>${displayDate(j.date)}</td><td>${escHtml(j.fullName)}</td><td>${escHtml(j.teamsAssigned.join(', '))}</td><td class="num">${fmtH(j.duration)}</td><td>${jtypeBadge(jtype)}</td></tr>`;
+    };
+    l27Body.innerHTML = l27In.length ? l27In.map(l27RowHtml).join('') : `<tr><td colspan="5" class="empty">No L27-only internal entries in this pay period.</td></tr>`;
+    if (l27Oop.length) {
+      const oopH = l27Oop.map(l27RowHtml).join('');
+      l27OopEl.innerHTML = `<details class="oop-details"><summary>Outside pay period (${l27Oop.length} L27 entry/entries)</summary><div class="oop-inner"><div class="table-wrap"><table><thead><tr><th>Date</th><th>L27 Name</th><th>Teams Assigned</th><th>Duration</th><th>Job Type</th></tr></thead><tbody>${oopH}</tbody></table></div></div></details>`;
+    } else { l27OopEl.innerHTML=''; }
+  }
+}
+
+// ─── CSV Export ────────────────────────────────────────────────────────────────
+function exportCSV() {
+  const tf=document.getElementById('filter-tech').value, sf=document.getElementById('filter-status').value;
+  let rows = allRows.filter(r=>r.type==='matched');
+  if (tf) rows=rows.filter(r=>r.tech===tf);
+  if (sf) rows=rows.filter(r=>r.status===sf);
+  const headers = ['Date','Client','Tech','Final Amount (L27)','PL Total','L27 Techs','PL Techs','L27 JTH','PL JTH','L27 Tip','PL Tip','Expected Comm.','PL Comm.','Comm. Diff','Status'];
+  const sl = {ok:'Match',warn:'Minor',err:'Discrepancy',miss:'Missing'};
+  const csv = [headers.join(','), ...rows.map(r=>[
+    displayDate(r.date),r.client,r.tech,
+    r.l27Total.toFixed(2),r.plTotal.toFixed(2),
+    r.l27Techs,r.plTechs,
+    r.l27JTH.toFixed(2),r.plJTH.toFixed(2),
+    r.l27Tip.toFixed(2),r.plTip.toFixed(2),
+    r.expComm.toFixed(2),r.plComm.toFixed(2),
+    r.commDiff.toFixed(2), sl[r.status]||r.status
+  ].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','))].join('\n');
+  const blob=new Blob([csv],{type:'text/csv'}), url=URL.createObjectURL(blob), a=document.createElement('a');
+  a.href=url; a.download=`cobalt-payroll-review-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+  URL.revokeObjectURL(url); showToast('CSV exported!');
+}
+
+// ─── Event wiring ──────────────────────────────────────────────────────────────
+function setupUpload(cardId, inputId, nameId, setFile) {
+  const card=document.getElementById(cardId), input=document.getElementById(inputId), nameEl=document.getElementById(nameId);
+  const onFile=f=>{if(!f)return;setFile(f);nameEl.textContent=f.name;nameEl.style.display='block';card.classList.add('loaded');checkReady();};
+  input.addEventListener('change',e=>onFile(e.target.files[0]));
+  card.addEventListener('dragover',e=>{e.preventDefault();card.classList.add('drag-over');});
+  card.addEventListener('dragleave',()=>card.classList.remove('drag-over'));
+  card.addEventListener('drop',e=>{e.preventDefault();card.classList.remove('drag-over');onFile(e.dataTransfer.files[0]);});
+}
+function checkReady() {
+  document.getElementById('btn-process').disabled = !(plFile&&l27File);
+  document.getElementById('status-msg').textContent =
+    !plFile&&!l27File?'Upload both files to begin.':
+    !plFile?'Upload the PL sheet to continue.':
+    !l27File?'Upload the Launch27 CSV to continue.':
+    'Ready to process — click Run Payroll Review.';
+}
+
+setupUpload('drop-pl',  'file-pl',  'pl-name',  f=>{plFile=f;});
+setupUpload('drop-l27', 'file-l27', 'l27-name', f=>{l27File=f;});
+
+document.getElementById('btn-process').addEventListener('click', async () => {
+  const btn=document.getElementById('btn-process'), msg=document.getElementById('status-msg');
+  btn.disabled=true; msg.textContent='Processing…';
+  try {
+    const plBuffer = await plFile.arrayBuffer();
+    const workbook = XLSX.read(plBuffer, {type:'array',cellDates:false,raw:true});
+    const techs    = parsePLSheet(workbook);
+
+    const l27Text  = await l27File.text();
+    const l27All   = parseL27CSV(l27Text);
+    const l27Internal = l27All.filter(j=>j.isInternal);
+    const l27Jobs     = l27All.filter(j=>!j.isInternal);
+
+    let gStart=null, gEnd=null;
+    for (const t of techs) {
+      if (t.payPeriodStart&&(!gStart||t.payPeriodStart<gStart)) gStart=t.payPeriodStart;
+      if (t.payPeriodEnd  &&(!gEnd  ||t.payPeriodEnd  >gEnd  )) gEnd  =t.payPeriodEnd;
+    }
+
+    const rows = matchAll(techs, l27Jobs, l27Internal, gStart, gEnd);
+
+    msg.textContent = `Done — ${techs.length} techs, ${rows.filter(r=>r.type==='matched').length} matched jobs.`;
+    if (gStart) msg.textContent += ` (Pay period: ${displayDate(gStart)} – ${displayDate(gEnd)})`;
+    document.getElementById('btn-reset').style.display='inline-flex';
+    render(techs, rows, l27Internal, gStart, gEnd);
+
+  } catch(err) {
+    msg.textContent='Error: '+err.message;
+    console.error(err);
+    btn.disabled=false;
+  }
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  plFile=l27File=null; allRows=[];techData=[];internalJobs=[];globalPayStart=null;globalPayEnd=null;
+  ['pl-name','l27-name'].forEach(id=>document.getElementById(id).style.display='none');
+  document.getElementById('drop-pl').classList.remove('loaded');
+  document.getElementById('drop-l27').classList.remove('loaded');
+  document.getElementById('file-pl').value=''; document.getElementById('file-l27').value='';
+  document.getElementById('dashboard').style.display='none';
+  document.getElementById('btn-reset').style.display='none';
+  document.getElementById('btn-process').disabled=true;
+  document.getElementById('status-msg').textContent='Upload both files to begin.';
+});
+
+document.getElementById('filter-tech').addEventListener('change', ()=>renderDiscTable(allRows, document.getElementById('filter-tech').value, document.getElementById('filter-status').value));
+document.getElementById('filter-status').addEventListener('change', ()=>renderDiscTable(allRows, document.getElementById('filter-tech').value, document.getElementById('filter-status').value));
+document.getElementById('btn-export').addEventListener('click', exportCSV);
+</script>
+</body>
+</html>
